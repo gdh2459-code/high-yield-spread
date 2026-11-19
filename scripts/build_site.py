@@ -3,8 +3,8 @@
 Builds the static GitHub Pages dashboard (`dist/index.html` and `dist/data.json`)
 by downloading the latest 3Y daily ICE BofA OAS series directly from FRED.
 
-Uses only the Python standard library so GitHub Actions runs in ~2 seconds
-with zero `pip install` overhead.
+Uses only the Python standard library + curl fallback with automatic retries
+so GitHub Actions handles transient FRED timeouts reliably.
 """
 
 from __future__ import annotations
@@ -15,26 +15,91 @@ import io
 import json
 import math
 import random
+import shutil
+import subprocess
+import time
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start_date}"
 KST = timezone(timedelta(hours=9))
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = ROOT / "template" / "index.html"
 DIST_DIR = ROOT / "dist"
 
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/csv,text/plain,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "close",
+}
+
+
+def download_text(url: str, max_attempts: int = 4, timeout_sec: int = 60) -> str:
+    """Download URL text using curl (preferred on GitHub Actions) with urllib fallback and retries."""
+    last_err: Exception | None = None
+    curl_bin = shutil.which("curl")
+
+    for attempt in range(1, max_attempts + 1):
+        # 1) Try curl first (avoids Python urllib TLS/read stalls on FRED)
+        if curl_bin:
+            try:
+                cmd = [
+                    curl_bin,
+                    "-fsSL",
+                    "--http1.1",
+                    "--connect-timeout",
+                    "20",
+                    "--max-time",
+                    str(timeout_sec),
+                    "-A",
+                    HEADERS["User-Agent"],
+                    "-H",
+                    f"Accept: {HEADERS['Accept']}",
+                    url,
+                ]
+                res = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_sec + 10,
+                    check=True,
+                )
+                if res.stdout.strip():
+                    return res.stdout
+            except Exception as exc:
+                last_err = exc
+                print(f"[attempt {attempt}/{max_attempts}] curl failed for {url}: {exc}")
+
+        # 2) Fallback to urllib
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                text = resp.read().decode("utf-8", errors="replace")
+                if text.strip():
+                    return text
+        except Exception as exc:
+            last_err = exc
+            print(f"[attempt {attempt}/{max_attempts}] urllib failed for {url}: {exc}")
+
+        if attempt < max_attempts:
+            wait = 5 * attempt
+            print(f"Retrying in {wait}s...")
+            time.sleep(wait)
+
+    raise RuntimeError(f"Failed to download {url} after {max_attempts} attempts: {last_err}")
+
 
 def fetch_fred_csv(series_id: str, years: int = 3) -> list[dict[str, object]]:
     """Download a FRED CSV series and return sorted [{date, value}] rows."""
-    url = FRED_CSV_URL.format(series_id=series_id)
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "credit-spread-dashboard/1.0"},
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        text = resp.read().decode("utf-8", errors="replace")
+    today = date.today()
+    start_dt = today - timedelta(days=366 * years + 14)
+    url = FRED_CSV_URL.format(series_id=series_id, start_date=start_dt.isoformat())
+    text = download_text(url)
 
     rows: list[dict[str, object]] = []
     reader = csv.reader(io.StringIO(text))
@@ -61,7 +126,6 @@ def fetch_fred_csv(series_id: str, years: int = 3) -> list[dict[str, object]]:
         try:
             cutoff_dt = last_dt.replace(year=last_dt.year - years)
         except ValueError:
-            # Handle Feb 29
             cutoff_dt = last_dt.replace(year=last_dt.year - years, day=28)
         cutoff_str = cutoff_dt.isoformat()
         rows = [r for r in rows if str(r["date"]) >= cutoff_str]
