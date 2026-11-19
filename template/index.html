@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Credit Spread" />
+  <title>Credit Spread Trend (3Y) — HY OAS &amp; IG OAS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background-color: #F8F9FA;
+      color: #111827;
+      -webkit-font-smoothing: antialiased;
+    }
+    .accordion-arrow {
+      transition: transform 0.2s ease;
+    }
+    .accordion-open .accordion-arrow {
+      transform: rotate(90deg);
+    }
+  </style>
+</head>
+<body class="min-h-screen antialiased">
+  <div class="max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-7">
+    <!-- Top Header & Controls -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-5">
+      <div class="flex flex-wrap items-center gap-2.5">
+        <h1 id="trend-heading" class="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">
+          Trend (3Y)
+        </h1>
+        <span id="data-source-badge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          FRED 자동 갱신
+        </span>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="inline-flex rounded-lg bg-white border border-gray-200 p-0.5 shadow-sm" role="group" aria-label="기간 선택">
+          <button type="button" data-range="1" class="range-btn px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-600 hover:text-gray-900 transition-colors">1Y</button>
+          <button type="button" data-range="2" class="range-btn px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-600 hover:text-gray-900 transition-colors">2Y</button>
+          <button type="button" data-range="3" class="range-btn px-2.5 py-1.5 text-xs font-semibold rounded-md bg-gray-900 text-white transition-colors">3Y</button>
+        </div>
+
+        <button id="btn-toggle-settings" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/></svg>
+          기준 설정
+        </button>
+      </div>
+    </header>
+
+    <!-- Collapsible Settings Panel -->
+    <section id="settings-panel" class="hidden mb-4 bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-gray-900">Spread turn 및 경고선 설정</h2>
+        <button id="btn-reset-settings" type="button" class="text-xs font-medium text-blue-600 hover:text-blue-700">기본값 복원</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <label for="input-hy-alert" class="font-medium text-gray-700">HY 경고선 (%)</label>
+            <span id="val-hy-alert" class="font-semibold text-gray-900">4.5%</span>
+          </div>
+          <input id="input-hy-alert" type="range" min="3.0" max="6.0" step="0.1" value="4.5" class="w-full accent-red-500 cursor-pointer" />
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <label for="input-hy-drop" class="font-medium text-gray-700">HY Turn 하락폭 (bp)</label>
+            <span id="val-hy-drop" class="font-semibold text-gray-900">25bp</span>
+          </div>
+          <input id="input-hy-drop" type="range" min="10" max="50" step="1" value="25" class="w-full accent-emerald-600 cursor-pointer" />
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <label for="input-ig-drop" class="font-medium text-gray-700">IG Turn 하락폭 (bp)</label>
+            <span id="val-ig-drop" class="font-semibold text-gray-900">6bp</span>
+          </div>
+          <input id="input-ig-drop" type="range" min="2" max="20" step="1" value="6" class="w-full accent-emerald-600 cursor-pointer" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Main 2-Column Dashboard Grid -->
+    <main class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
+      <!-- Card 1: High Yield (HY OAS) -->
+      <article class="bg-white rounded-2xl border border-gray-200/90 p-4 sm:p-5 shadow-sm flex flex-col">
+        <div class="flex items-start justify-between gap-2 mb-1">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-gray-900 leading-snug">High yield (HY OAS)</h2>
+            <p id="hy-subtitle" class="text-xs sm:text-sm text-gray-500 mt-0.5">% · alert at 4.5% or +75bp in a month</p>
+          </div>
+          <div class="text-right shrink-0">
+            <div id="hy-latest-badge" class="text-sm sm:text-base font-bold text-red-600">-</div>
+            <div id="hy-1m-badge" class="text-[11px] font-medium text-gray-500">-</div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between mt-2 mb-2.5">
+          <div class="inline-flex items-center gap-1.5 text-xs text-gray-600">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span>Spread turn</span>
+          </div>
+          <span id="hy-alert-pill" class="hidden px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 border border-red-200"></span>
+        </div>
+
+        <div class="relative h-60 sm:h-72 w-full">
+          <canvas id="chart-hy" aria-label="High yield HY OAS 3년 추이 그래프"></canvas>
+        </div>
+
+        <div id="hy-summary-box" class="mt-4 bg-gray-100/90 rounded-xl px-3.5 py-3 text-xs sm:text-[13px] leading-relaxed text-gray-700">
+          로딩 중...
+        </div>
+
+        <div class="mt-3">
+          <button id="toggle-hy-info" type="button" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none">
+            <span class="accordion-arrow inline-block text-[10px]">▶</span>
+            <span>What a spread turn means</span>
+          </button>
+          <div id="hy-info-body" class="hidden mt-2 text-xs text-gray-600 leading-relaxed bg-blue-50/50 border border-blue-100 rounded-xl p-3">
+            하이일드 스프레드(HY OAS)의 <strong>3일 이동평균</strong>이 상승 파동의 고점을 찍은 뒤 설정된 폭(기본 <strong>25bp</strong>) 이상 내려오면 녹색 점(<strong>Spread turn</strong>)이 표시됩니다.
+          </div>
+        </div>
+      </article>
+
+      <!-- Card 2: Investment Grade (IG OAS) -->
+      <article class="bg-white rounded-2xl border border-gray-200/90 p-4 sm:p-5 shadow-sm flex flex-col">
+        <div class="flex items-start justify-between gap-2 mb-1">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-gray-900 leading-snug">Investment grade (IG OAS)</h2>
+            <p class="text-xs sm:text-sm text-gray-500 mt-0.5">% · Big Tech bond funding cost</p>
+          </div>
+          <div class="text-right shrink-0">
+            <div id="ig-latest-badge" class="text-sm sm:text-base font-bold text-blue-600">-</div>
+            <div id="ig-1m-badge" class="text-[11px] font-medium text-gray-500">-</div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between mt-2 mb-2.5">
+          <div class="inline-flex items-center gap-1.5 text-xs text-gray-600">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span>Spread turn</span>
+          </div>
+        </div>
+
+        <div class="relative h-60 sm:h-72 w-full">
+          <canvas id="chart-ig" aria-label="Investment grade IG OAS 3년 추이 그래프"></canvas>
+        </div>
+
+        <div id="ig-summary-box" class="mt-4 bg-gray-100/90 rounded-xl px-3.5 py-3 text-xs sm:text-[13px] leading-relaxed text-gray-700">
+          로딩 중...
+        </div>
+
+        <div class="mt-3">
+          <button id="toggle-ig-info" type="button" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none">
+            <span class="accordion-arrow inline-block text-[10px]">▶</span>
+            <span>What a spread turn means</span>
+          </button>
+          <div id="ig-info-body" class="hidden mt-2 text-xs text-gray-600 leading-relaxed bg-blue-50/50 border border-blue-100 rounded-xl p-3">
+            투자등급 회사채 스프레드(IG OAS)의 <strong>3일 이동평균</strong>이 직전 고점 대비 설정된 폭(기본 <strong>6bp</strong>) 이상 하락할 때 녹색 점(<strong>Spread turn</strong>)을 표시합니다.
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <!-- Footer Source Attribution -->
+    <footer class="mt-5 text-[11px] sm:text-xs text-gray-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 px-1">
+      <div>
+        Source:
+        <a href="https://fred.stlouisfed.org/series/bamlh0a0hym2" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-medium">FRED BAMLH0A0HYM2</a>
+        ·
+        <a href="https://fred.stlouisfed.org/series/BAMLC0A0CM" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-medium">FRED BAMLC0A0CM</a>
+      </div>
+      <div id="build-timestamp">자동 빌드 대기 중</div>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const PAYLOAD = __FRED_DATA_PAYLOAD__;
+
+      function filterByYears(rows, years) {
+        if (!rows.length) return [];
+        const last = new Date(rows[rows.length - 1].date + 'T00:00:00');
+        const cutoff = new Date(last);
+        cutoff.setFullYear(cutoff.getFullYear() - years);
+        const cutoffStr = cutoff.toISOString().slice(0, 10);
+        return rows.filter((r) => r.date >= cutoffStr);
+      }
+
+      function analyzeSpread(rows, dropThreshold, minRiseToArm) {
+        if (rows.length < 3) return null;
+        const ma3 = [];
+        for (let i = 0; i < rows.length; i++) {
+          if (i < 2) {
+            ma3.push(null);
+          } else {
+            ma3.push((rows[i - 2].value + rows[i - 1].value + rows[i].value) / 3);
+          }
+        }
+
+        const turnIndices = [];
+        let trough = ma3[2];
+        let armed = false;
+        let peak = ma3[2];
+
+        for (let i = 2; i < rows.length; i++) {
+          const v = ma3[i];
+          if (!armed) {
+            if (v < trough) {
+              trough = v;
+            } else if (v - trough >= minRiseToArm) {
+              armed = true;
+              peak = v;
+            }
+          } else {
+            if (v > peak) {
+              peak = v;
+            } else if (peak - v >= dropThreshold) {
+              turnIndices.push(i);
+              armed = false;
+              trough = v;
+              peak = v;
+            }
+          }
+        }
+
+        const lastTurnIdx = turnIndices.length ? turnIndices[turnIndices.length - 1] : null;
+        const startHighIdx = lastTurnIdx !== null ? Math.min(lastTurnIdx + 1, rows.length - 1) : 2;
+        let currentHighMa3 = ma3[startHighIdx] ?? rows[rows.length - 1].value;
+        for (let i = startHighIdx; i < rows.length; i++) {
+          if (ma3[i] !== null && ma3[i] > currentHighMa3) {
+            currentHighMa3 = ma3[i];
+          }
+        }
+
+        const latestIdx = rows.length - 1;
+        const latestRow = rows[latestIdx];
+        const latestMa3 = ma3[latestIdx];
+        const nextTurnLevel = currentHighMa3 - dropThreshold;
+
+        const lastDate = new Date(latestRow.date + 'T00:00:00');
+        const monthAgo = new Date(lastDate);
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        const monthAgoStr = monthAgo.toISOString().slice(0, 10);
+        let priorVal = rows[0].value;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (rows[i].date <= monthAgoStr) {
+            priorVal = rows[i].value;
+            break;
+          }
+        }
+        const oneMonthChangeBp = (latestRow.value - priorVal) * 100;
+
+        return {
+          rows,
+          ma3,
+          turnIndices,
+          lastTurnDate: lastTurnIdx !== null ? rows[lastTurnIdx].date : null,
+          latestDate: latestRow.date,
+          latestValue: latestRow.value,
+          latestMa3,
+          currentHighMa3,
+          nextTurnLevel,
+          oneMonthChangeBp,
+        };
+      }
+
+      const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+      function fmtDateLong(iso) {
+        if (!iso) return 'N/A';
+        const [y, m, d] = iso.split('-').map(Number);
+        return `${MONTHS[m - 1]} ${d}, ${y}`;
+      }
+
+      function fmtMonthDay(iso) {
+        const [, m, d] = iso.split('-').map(Number);
+        return `${m}/${d}`;
+      }
+
+      function fmtYearMonthTick(iso) {
+        const [y, m] = iso.split('-').map(Number);
+        return `${String(y).slice(2)}.${m}`;
+      }
+
+      const alertLinePlugin = {
+        id: 'alertLinePlugin',
+        afterDatasetsDraw(chart, _args, pluginOptions) {
+          if (!pluginOptions || pluginOptions.value == null) return;
+          const { ctx, chartArea, scales } = chart;
+          const yScale = scales.y;
+          if (!yScale || !chartArea) return;
+          const yPos = yScale.getPixelForValue(pluginOptions.value);
+          if (yPos < chartArea.top || yPos > chartArea.bottom) return;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = '#9CA3AF';
+          ctx.lineWidth = 1.1;
+          ctx.moveTo(chartArea.left, yPos);
+          ctx.lineTo(chartArea.right, yPos);
+          ctx.stroke();
+
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#6B7280';
+          ctx.font = '500 11px Inter, sans-serif';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(pluginOptions.label, chartArea.right - 2, yPos - 4);
+          ctx.restore();
+        },
+      };
+
+      const state = {
+        hyRaw: PAYLOAD.hy || [],
+        igRaw: PAYLOAD.ig || [],
+        rangeYears: 3,
+        hyAlertPct: 4.5,
+        hyDropBp: 25,
+        igDropBp: 6,
+      };
+
+      let hyChart = null;
+      let igChart = null;
+
+      function buildChartConfig(analysis, opts) {
+        const labels = analysis.rows.map((r) => r.date);
+        const values = analysis.rows.map((r) => r.value);
+        const turnSet = new Set(analysis.turnIndices);
+        const turnPoints = analysis.rows.map((r, i) => (turnSet.has(i) ? r.value : null));
+
+        const dataMin = Math.min(...values);
+        const dataMax = Math.max(...values);
+        const yMin = Math.min(opts.minY, Math.floor(dataMin / opts.stepY) * opts.stepY);
+        let yMax = Math.max(opts.maxY, Math.ceil(dataMax / opts.stepY) * opts.stepY);
+        if (opts.alertLevel != null) {
+          yMax = Math.max(yMax, opts.alertLevel + opts.stepY);
+        }
+
+        const n = labels.length;
+        const tickIndices = new Set([
+          0,
+          Math.round((n - 1) * 0.25),
+          Math.round((n - 1) * 0.5),
+          Math.round((n - 1) * 0.75),
+          n - 1,
+        ]);
+
+        return {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: opts.seriesLabel,
+                data: values,
+                borderColor: opts.lineColor,
+                borderWidth: 1.75,
+                pointRadius: 0,
+                pointHoverRadius: 4.5,
+                pointHoverBackgroundColor: opts.lineColor,
+                pointHoverBorderColor: '#FFFFFF',
+                pointHoverBorderWidth: 1.5,
+                tension: 0.08,
+                order: 2,
+              },
+              {
+                label: 'Spread turn',
+                data: turnPoints,
+                showLine: false,
+                pointRadius: 5.5,
+                pointHoverRadius: 7,
+                pointBackgroundColor: '#10B981',
+                pointBorderColor: '#FFFFFF',
+                pointBorderWidth: 2,
+                order: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 220 },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              alertLinePlugin: opts.alertLevel != null
+                ? { value: opts.alertLevel, label: `Alert ${opts.alertLevel.toFixed(1)}%` }
+                : { value: null },
+              tooltip: {
+                backgroundColor: 'rgba(17, 24, 39, 0.94)',
+                titleColor: '#F9FAFB',
+                bodyColor: '#E5E7EB',
+                padding: 10,
+                cornerRadius: 8,
+                displayColors: false,
+                callbacks: {
+                  title(items) {
+                    return items.length ? fmtDateLong(items[0].label) : '';
+                  },
+                  label(ctx) {
+                    if (ctx.datasetIndex === 1) {
+                      return ctx.raw != null ? '● Spread turn signal' : null;
+                    }
+                    const idx = ctx.dataIndex;
+                    const ma = analysis.ma3[idx];
+                    const lines = [`${opts.shortName}: ${ctx.raw.toFixed(opts.decimals)}%`];
+                    if (ma != null) lines.push(`3-day avg: ${ma.toFixed(opts.decimals)}%`);
+                    return lines;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                border: { color: '#E5E7EB' },
+                ticks: {
+                  autoSkip: false,
+                  maxRotation: 0,
+                  color: '#6B7280',
+                  font: { size: 11, family: 'Inter, sans-serif' },
+                  callback(_val, idx) {
+                    return tickIndices.has(idx) ? fmtYearMonthTick(labels[idx]) : '';
+                  },
+                },
+              },
+              y: {
+                min: Number(yMin.toFixed(2)),
+                max: Number(yMax.toFixed(2)),
+                border: { display: false },
+                grid: { color: '#EEF0F3' },
+                ticks: {
+                  stepSize: opts.stepY,
+                  color: '#6B7280',
+                  font: { size: 11, family: 'Inter, sans-serif' },
+                  callback(v) {
+                    return Number(v).toFixed(1);
+                  },
+                },
+              },
+            },
+          },
+          plugins: [alertLinePlugin],
+        };
+      }
+
+      function renderSummaryHtml(analysis, decimals) {
+        const lastTurn = fmtDateLong(analysis.lastTurnDate);
+        const avgStr = analysis.latestMa3.toFixed(decimals) + '%';
+        const asOf = fmtMonthDay(analysis.latestDate);
+        const highStr = analysis.currentHighMa3.toFixed(decimals) + '%';
+        const nextStr = analysis.nextTurnLevel.toFixed(decimals) + '%';
+        return `<strong class="font-semibold text-gray-900">Last turn ${lastTurn}.</strong> The 3-day average is <strong class="font-semibold text-gray-900">${avgStr}</strong> as of ${asOf}. Its high so far is ${highStr}, so a turn would mark once that average is <strong class="font-semibold text-gray-900">${nextStr}</strong> or lower.`;
+      }
+
+      function renderAll() {
+        document.getElementById('trend-heading').textContent = `Trend (${state.rangeYears}Y)`;
+        document.getElementById('hy-subtitle').textContent = `% · alert at ${state.hyAlertPct.toFixed(1)}% or +75bp in a month`;
+
+        const latestObsDate = state.hyRaw.length ? state.hyRaw[state.hyRaw.length - 1].date : '';
+        document.getElementById('data-source-badge').innerHTML =
+          `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>FRED 자동 갱신 (${latestObsDate} 기준)`;
+        document.getElementById('build-timestamp').textContent =
+          `마지막 빌드: ${PAYLOAD.updatedAtKst || ''}`;
+
+        const hyRows = filterByYears(state.hyRaw, state.rangeYears);
+        const igRows = filterByYears(state.igRaw, state.rangeYears);
+        const hyDrop = state.hyDropBp / 100;
+        const igDrop = state.igDropBp / 100;
+
+        const hyAnalysis = analyzeSpread(hyRows, hyDrop, Math.max(hyDrop * 1.35, 0.28));
+        const igAnalysis = analyzeSpread(igRows, igDrop, Math.max(igDrop * 1.4, 0.08));
+
+        if (hyAnalysis) {
+          document.getElementById('hy-latest-badge').textContent = `${hyAnalysis.latestValue.toFixed(2)}%`;
+          const s1 = hyAnalysis.oneMonthChangeBp >= 0 ? '+' : '';
+          document.getElementById('hy-1m-badge').textContent = `1M ${s1}${Math.round(hyAnalysis.oneMonthChangeBp)}bp`;
+          document.getElementById('hy-summary-box').innerHTML = renderSummaryHtml(hyAnalysis, 2);
+
+          const alertPill = document.getElementById('hy-alert-pill');
+          const alerts = [];
+          if (hyAnalysis.latestValue >= state.hyAlertPct) alerts.push(`≥ ${state.hyAlertPct.toFixed(1)}%`);
+          if (hyAnalysis.oneMonthChangeBp >= 75) alerts.push(`1M +${Math.round(hyAnalysis.oneMonthChangeBp)}bp`);
+          if (alerts.length) {
+            alertPill.textContent = `Alert: ${alerts.join(' · ')}`;
+            alertPill.classList.remove('hidden');
+          } else {
+            alertPill.classList.add('hidden');
+          }
+
+          if (hyChart) hyChart.destroy();
+          hyChart = new Chart(
+            document.getElementById('chart-hy').getContext('2d'),
+            buildChartConfig(hyAnalysis, {
+              seriesLabel: 'HY OAS',
+              shortName: 'HY OAS',
+              lineColor: '#E04F44',
+              minY: 2.5,
+              maxY: 5.0,
+              stepY: 0.5,
+              decimals: 2,
+              alertLevel: state.hyAlertPct,
+            })
+          );
+        }
+
+        if (igAnalysis) {
+          document.getElementById('ig-latest-badge').textContent = `${igAnalysis.latestValue.toFixed(3)}%`;
+          const s2 = igAnalysis.oneMonthChangeBp >= 0 ? '+' : '';
+          document.getElementById('ig-1m-badge').textContent = `1M ${s2}${Math.round(igAnalysis.oneMonthChangeBp)}bp`;
+          document.getElementById('ig-summary-box').innerHTML = renderSummaryHtml(igAnalysis, 3);
+
+          if (igChart) igChart.destroy();
+          igChart = new Chart(
+            document.getElementById('chart-ig').getContext('2d'),
+            buildChartConfig(igAnalysis, {
+              seriesLabel: 'IG OAS',
+              shortName: 'IG OAS',
+              lineColor: '#2563EB',
+              minY: 0.6,
+              maxY: 1.4,
+              stepY: 0.2,
+              decimals: 3,
+              alertLevel: null,
+            })
+          );
+        }
+      }
+
+      document.querySelectorAll('.range-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          state.rangeYears = Number(btn.dataset.range);
+          document.querySelectorAll('.range-btn').forEach((b) => {
+            const active = Number(b.dataset.range) === state.rangeYears;
+            b.className = active
+              ? 'range-btn px-2.5 py-1.5 text-xs font-semibold rounded-md bg-gray-900 text-white transition-colors'
+              : 'range-btn px-2.5 py-1.5 text-xs font-medium rounded-md text-gray-600 hover:text-gray-900 transition-colors';
+          });
+          renderAll();
+        });
+      });
+
+      document.getElementById('btn-toggle-settings').addEventListener('click', () => {
+        document.getElementById('settings-panel').classList.toggle('hidden');
+      });
+
+      const inputHyAlert = document.getElementById('input-hy-alert');
+      const inputHyDrop = document.getElementById('input-hy-drop');
+      const inputIgDrop = document.getElementById('input-ig-drop');
+
+      inputHyAlert.addEventListener('input', () => {
+        state.hyAlertPct = parseFloat(inputHyAlert.value);
+        document.getElementById('val-hy-alert').textContent = `${state.hyAlertPct.toFixed(1)}%`;
+        renderAll();
+      });
+
+      inputHyDrop.addEventListener('input', () => {
+        state.hyDropBp = parseInt(inputHyDrop.value, 10);
+        document.getElementById('val-hy-drop').textContent = `${state.hyDropBp}bp`;
+        renderAll();
+      });
+
+      inputIgDrop.addEventListener('input', () => {
+        state.igDropBp = parseInt(inputIgDrop.value, 10);
+        document.getElementById('val-ig-drop').textContent = `${state.igDropBp}bp`;
+        renderAll();
+      });
+
+      document.getElementById('btn-reset-settings').addEventListener('click', () => {
+        state.hyAlertPct = 4.5;
+        state.hyDropBp = 25;
+        state.igDropBp = 6;
+        inputHyAlert.value = '4.5';
+        inputHyDrop.value = '25';
+        inputIgDrop.value = '6';
+        document.getElementById('val-hy-alert').textContent = '4.5%';
+        document.getElementById('val-hy-drop').textContent = '25bp';
+        document.getElementById('val-ig-drop').textContent = '6bp';
+        renderAll();
+      });
+
+      function wireAccordion(btnId, bodyId) {
+        const btn = document.getElementById(btnId);
+        const body = document.getElementById(bodyId);
+        btn.addEventListener('click', () => {
+          body.classList.toggle('hidden');
+          btn.classList.toggle('accordion-open');
+        });
+      }
+      wireAccordion('toggle-hy-info', 'hy-info-body');
+      wireAccordion('toggle-ig-info', 'ig-info-body');
+
+      renderAll();
+    })();
+  </script>
+</body>
+</html>
